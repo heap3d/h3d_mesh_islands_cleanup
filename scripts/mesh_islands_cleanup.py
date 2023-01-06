@@ -33,23 +33,6 @@ FORCE_UNIFY = "h3d_imc_force_unify"
 REMOVE_DISCO_WEIGHT_VALUES = "h3d_imc_remove_disco_weight_values"
 
 
-def get_islands(mesh):
-    if not mesh:
-        return None
-    if mesh.type != h3du.itype_str(c.MESH_TYPE):
-        return None
-
-    polygons = set(mesh.geometry.polygons)
-    islands = []
-    while polygons:
-        island = set(polygons.pop().getIsland())
-        islands.append(island)
-        for poly in island:
-            polygons.discard(poly)
-    
-    return islands
-
-
 class Options:
     remove_floating_vertices = False
     remove_one_point_polygons = False
@@ -62,14 +45,6 @@ class Options:
     unify_polygons = False
     force_unify = False
     remove_disco_weight_values = False
-
-
-def select_polys(mesh, polygons):
-    mesh.select(replace=True)
-    lx.eval("select.type polygon")
-    lx.eval("select.drop polygon")
-    for poly in polygons:
-        poly.select()
 
 
 def mesh_cleanup(opt):
@@ -105,17 +80,32 @@ def main():
     opt.unify_polygons = h3du.get_user_value(UNIFY_POLYGONS)
     opt.force_unify = h3du.get_user_value(FORCE_UNIFY)
     opt.remove_disco_weight_values = h3du.get_user_value(REMOVE_DISCO_WEIGHT_VALUES)
-    
-    # get selected meshes
-    meshes = modo.Scene().selectedByType(itype=c.MESH_TYPE)
 
-    islands = []
-    for mesh in meshes:
-        islands = get_islands(mesh)
-        for island in islands:
-            select_polys(mesh, island)
-            mesh_cleanup(opt)
-        
+    # get selected meshes
+    selected_meshes = modo.Scene().selectedByType(itype=c.MESH_TYPE)
+    # cleanup selected meshes in a loop
+    for mesh in selected_meshes:
+        # group selected mesh in a temp folder
+        mesh.select(replace=True)
+        lx.eval("layer.groupSelected")
+        group_loc = mesh.parent
+        # unmerge mesh into a temp folder
+        mesh.select(replace=True)
+        lx.eval("layer.unmergeMeshes")
+        # select all meshes in a folder
+        for child in group_loc.children():
+            child.select()
+        # cleanup selected meshes
+        mesh_cleanup(opt)
+        # merge selected meshes
+        lx.eval("layer.mergeMeshes true")
+        # parent mesh to an previous parent
+        parent_item = group_loc.parent
+        parent_id = parent_item.id if parent_item else None
+        lx.eval("item.parent {} {} {} inPlace:1 duplicate:0".format(mesh.id, parent_id, group_loc.parentIndex))
+        # remove a temp folder
+        modo.Scene().removeItems(group_loc)
+
     print("done.")
 
 
